@@ -7,9 +7,12 @@ import hyper_params as hp
 OPTS_PDN = list("positive", "negative", "default")
 HYPS_OTHERS = list("lambda", "train_size")
 
-def check_datevar(self,date_var = "auto"):
+def check_datevar(
+    InputCollect,
+    date_var = "auto"
+):
     if date_var[0] == "auto":
-        is_date_pre = self.dt_input.applymap(lambda x: isinstance(x, pd.Timestamp)).any()
+        is_date_pre = InputCollect["dt_input"].applymap(lambda x: isinstance(x, pd.Timestamp)).any()
         is_date = [i for i, x in enumerate(is_date_pre) if x]
         # is_date = np.where(np.array(list(map(lambda x: isinstance(x, np.datetime64), dt_input))).flatten())[0]
         if len(is_date) == 1:
@@ -20,7 +23,7 @@ def check_datevar(self,date_var = "auto"):
     if date_var is None or len(date_var) > 1 or date_var not in list(self.dt_input):
         raise ValueError("You must provide only 1 correct date variable name for 'date_var'")
     
-    dt_input_sorted = self.dt_input.sort_values(by=date_var)
+    dt_input_sorted = InputCollect["dt_input"].sort_values(by=date_var)
     date_var_dates = list(
         dt_input_sorted[date_var][0]
         ,dt_input_sorted[date_var][1])
@@ -42,62 +45,74 @@ def check_datevar(self,date_var = "auto"):
     else:
         raise ValueError(f"{date_var} data has to be daily, weekly or monthly")
     
-    self.dt_input = dt_input_sorted
-    self.date_var = date_var
-    self.dayInterval = dayInterval
-    self.intervalType = intervalType
+    InputCollect["dt_input"] = dt_input_sorted
+    InputCollect["date_var"] = date_var
+    InputCollect["dayInterval"] = dayInterval
+    InputCollect["intervalType"] = intervalType
 
-def check_prophet(self,prophet_country,prophet_signs):
+    return InputCollect
+
+def check_prophet(
+        InputCollect,
+        prophet_country,
+        prophet_signs
+):
     # check_vector(prophet_vars)
     # check_vector(prophet_signs)
-    if self.dt_holidays is None or self.prophet_vars is None:
+    if InputCollect["dt_holidays"] is None or InputCollect["prophet_vars"] is None:
         return np.nan
     else:
-        self.prophet_vars = self.prophet_vars.lower()
+        InputCollect["prophet_vars"] = InputCollect["prophet_vars"].lower()
         opts = list("trend", "season", "monthly", "weekday", "holiday")
-    if not all(item in opts for item in self.prophet_vars):
+    if not all(item in opts for item in InputCollect["prophet_vars"]):
       raise ValueError(f"Allowed values for 'prophet_vars' are: {opts}")
-    if "weekday" in self.prophet_vars and self.dayInterval > 7:
+    if "weekday" in InputCollect["prophet_vars"] and InputCollect["dayInterval"] > 7:
         warnings.warn("Ignoring prophet_vars = 'weekday' input given your data granularity")
-    if prophet_country is None or len(prophet_country) > 1 or prophet_country not in self.dt_holidays["country"].unique():
+    if prophet_country is None or len(prophet_country) > 1 or prophet_country not in InputCollect["dt_holidays"]["country"].unique():
       raise ValueError(
-        f"You must provide 1 country code in 'prophet_country' input. {len(self.dt_holidays['country'].unique())} countries are included: {self.dt_holidays['country'].unique()} \n If your country is not available, please manually add it to 'dt_holidays'"
+        f"You must provide 1 country code in 'prophet_country' input. {len(InputCollect["dt_holidays"]["country"].unique())} countries are included: {InputCollect["dt_holidays"]["country"].unique()} \n If your country is not available, please manually add it to 'dt_holidays'"
         )    
     if prophet_signs is None:
-        prophet_signs = ["default"] * len(self.prophet_vars)
+        prophet_signs = ["default"] * len(InputCollect["prophet_vars"])
     if not all(prophet_signs in OPTS_PDN):
         raise ValueError(f"Allowed values for 'prophet_signs' are: {OPTS_PDN}")
-    if len(prophet_signs) != len(self.prophet_vars):
+    if len(prophet_signs) != len(InputCollect["prophet_vars"]):
         raise ValueError("'prophet_signs' must have same length as 'prophet_vars'")
 
-    self.prophet_signs = prophet_signs
+    InputCollect["prophet_signs"] = prophet_signs
+    return InputCollect
 
-def check_context(self,context_signs):
-    if self.context_vars is None:
+def check_context(
+        InputCollect,
+        context_signs
+):
+    if InputCollect["context_vars"] is None:
         if context_signs is None:
-            context_signs = ["default"] * len(self.context_vars)
+            context_signs = ["default"] * len(InputCollect["context_vars"])
         if not all(context_signs in OPTS_PDN):
             raise ValueError(f"Allowed values for 'context_signs' are: {OPTS_PDN}")
-        if len(context_signs) != len(self.context_vars):
+        if len(context_signs) != len(InputCollect["context_vars"]):
             raise ValueError("Input 'context_signs' must have same length as 'context_vars'")
         
-        temp = self.context_vars in list(self.dt_input)
+        temp = InputCollect["context_vars"] in list(InputCollect["dt_input"])
         if not all(temp):
             raise ValueError("Input 'context_vars' not included in data.")
-        self.context_signs = context_signs
+        InputCollect["context_signs"] = context_signs
+    
+    return InputCollect
 
-def check_paidmedia(self,paid_media_signs):
-    if self.paid_media_spends is None:
+def check_paidmedia(InputCollect,paid_media_signs):
+    if InputCollect["paid_media_spends"] is None:
         raise AttributeError("Must provide 'paid_media_spends'")
     # check_vector(paid_media_vars)
     # check_vector(paid_media_signs)
     # check_vector(paid_media_spends)
-    mediaVarCount = len(self.paid_media_vars)
-    spendVarCount = len(self.paid_media_spends)
-    temp = self.paid_media_vars in list(self.dt_input)
+    mediaVarCount = len(InputCollect["paid_media_vars"])
+    spendVarCount = len(InputCollect["paid_media_spends"])
+    temp = InputCollect["paid_media_vars"] in list(InputCollect["dt_input"])
     if not all(temp):
         raise LookupError("Input 'paid_media_vars' not included in data.")
-    temp = self.paid_media_spends in list(self.dt_input)
+    temp = InputCollect["paid_media_spends"] in list(InputCollect["dt_input"])
     if not all(temp):
         raise LookupError("Input 'paid_media_spends' not included in data.")
     if paid_media_signs is None:
@@ -105,50 +120,53 @@ def check_paidmedia(self,paid_media_signs):
     if not all(paid_media_signs in OPTS_PDN):
         raise ValueError(f"Allowed values for 'paid_media_signs' are: {OPTS_PDN}")
     if len(paid_media_signs) == 1:
-        paid_media_signs = paid_media_signs * len(self.paid_media_vars)
-    if len(paid_media_signs) != len(self.paid_media_vars):
+        paid_media_signs = paid_media_signs * len(InputCollect["paid_media_vars"])
+    if len(paid_media_signs) != len(InputCollect["paid_media_vars"]):
         raise IndexError("Input 'paid_media_signs' must have same length as 'paid_media_vars'")
     if spendVarCount != mediaVarCount:
         raise IndexError("Input 'paid_media_spends' must have same length as 'paid_media_vars'")
-    is_num = np.array(self.dt_input[self.paid_media_vars].applymap(np.isnumeric)).flatten()
+    is_num = np.array(InputCollect["dt_input"][InputCollect["paid_media_vars"]].applymap(np.isnumeric)).flatten()
     if not all(is_num):
         raise TypeError("All your 'paid_media_vars' must be numeric.")
-    all_paid_media_vars = list(set(self.paid_media_vars) | set(self.paid_media_spends))
-    get_cols = any(self.dt_input[all_paid_media_vars].values < 0)
+    all_paid_media_vars = list(set(InputCollect["paid_media_vars"]) | set(InputCollect["paid_media_spends"]))
+    get_cols = any(InputCollect["dt_input"][all_paid_media_vars].values < 0)
     if get_cols:
-        check_media_names = np.unique(self.paid_media_vars + self.paid_media_spends)
-        df_check = self.dt_input[check_media_names]
+        check_media_names = np.unique(InputCollect["paid_media_vars"] + InputCollect["paid_media_spends"])
+        df_check = InputCollect["dt_input"][check_media_names]
         check_media_val = df_check.apply(lambda x: any(x < 0)).tolist()
         raise ValueError("contains negative values. Media must be >=0")
     
-    self.paid_media_signs = paid_media_signs
-    self.mediaVarCount = mediaVarCount
+    InputCollect["paid_media_signs"] = paid_media_signs
+    InputCollect["mediaVarCount"] = mediaVarCount
+    return InputCollect
 
 def check_organicvars(
-    self
-    ,organic_signs):
-    if self.organic_vars is None:
+    InputCollect
+    ,organic_signs
+):
+    if InputCollect["organic_vars"] is None:
         return np.nan
     # check_vector(organic_vars)
     # check_vector(organic_signs)
-    temp = self.organic_vars in list(self.dt_input)
+    temp = InputCollect["organic_vars"] in list(InputCollect["dt_input"])
     if not all(temp):
         raise ValueError("Input 'organic_vars' not included in data.")
-    if self.organic_vars is not None & organic_signs is None:
-        organic_signs = ["positive"] * len(self.organic_vars)
+    if InputCollect["organic_vars"] is not None & organic_signs is None:
+        organic_signs = ["positive"] * len(InputCollect["organic_vars"])
     if not all(organic_signs in OPTS_PDN):
         raise ValueError(f"Allowed values for 'organic_signs' are: {OPTS_PDN}")
-    if len(organic_signs) != len(self.organic_vars):
+    if len(organic_signs) != len(InputCollect["organic_vars"]):
         raise ValueError("Input 'organic_signs' must have same length as 'organic_vars'")
     
-    self.organic_signs = organic_signs
+    InputCollect["organic_signs"] = organic_signs
+    return InputCollect
 
 def check_allvars(all_ind_vars):
     if len(all_ind_vars) != len(np.unique(all_ind_vars)):
         raise IndexError("All input variables must have unique names")
 
-def check_windows(self,window_start,window_end):
-    dates_vec = pd.to_datetime(self.dt_input[self.date_var]).dt.strftime('%Y-%m-%d')
+def check_windows(InputCollect,window_start,window_end):
+    dates_vec = pd.to_datetime(InputCollect["dt_input"][InputCollect["date_var"]]).dt.strftime('%Y-%m-%d')
     
     if window_start is None:
         window_start = dates_vec.min()
@@ -164,7 +182,7 @@ def check_windows(self,window_start,window_end):
     
     rollingWindowStartWhich = np.argmin(np.abs(dates_vec - window_start)).tolist()
     if window_start not in dates_vec:
-        window_start = self.dt_input.loc[rollingWindowStartWhich, date_var]
+        window_start = InputCollect["dt_input"].loc[rollingWindowStartWhich, InputCollect["date_var"]]
         warnings.warn(f"Input 'window_start' is adapted to the closest date contained in input data: {window_start}")
     refreshAddedStart = window_start
     
@@ -183,31 +201,31 @@ def check_windows(self,window_start,window_end):
     
     rollingWindowEndWhich = np.argmin(np.abs(dates_vec - window_end))
     if window_end not in dates_vec:
-        window_end = self.dt_input.loc[rollingWindowEndWhich, date_var]
+        window_end = InputCollect["dt_input"].loc[rollingWindowEndWhich, InputCollect["date_var"]]
         warnings.warn(f"Input 'window_end' is adapted to the closest date contained in input data: {window_end}")
     rollingWindowLength = rollingWindowEndWhich - rollingWindowStartWhich + 1
     
-    dt_init = self.dt_input.loc[rollingWindowStartWhich:rollingWindowEndWhich, self.all_media]
+    dt_init = InputCollect["dt_input"].loc[rollingWindowStartWhich:rollingWindowEndWhich, InputCollect["all_media"]]
     
     dt_init_numeric = dt_init.select_dtypes(include=np.number)
     init_all0 = (dt_init_numeric.sum() == 0).all()
     if any(init_all0):
         raise ValueError("These media channels contains only 0 within training period ")
     
-    self.window_start = window_start
-    self.rollingWindowStartWhich = rollingWindowStartWhich
-    self.refreshAddedStart = refreshAddedStart
-    self.window_end = window_end
-    self.rollingWindowEndWhich = rollingWindowEndWhich
-    self.rollingWindowLength = rollingWindowLength
+    InputCollect["window_start"] = window_start
+    InputCollect["rollingWindowStartWhich"] = rollingWindowStartWhich
+    InputCollect["refreshAddedStart"] = refreshAddedStart
+    InputCollect["window_end"] = window_end
+    InputCollect["rollingWindowEndWhich"] = rollingWindowEndWhich
+    InputCollect["rollingWindowLength"] = rollingWindowLength
+    return InputCollect
 
 def check_run_inputs(
-    cores
-    ,iterations = None
-    ,trials = None
-    ,intercept_sign = None
-    ,nevergrad_algo = None
-    ):
+        iterations = None,
+        trials = None,
+        intercept_sign = None,
+        nevergrad_algo = None
+):
     if iterations is None:
         raise ValueError("Must provide 'iterations' in robyn_run()")
     if trials is None:
@@ -219,35 +237,36 @@ def check_run_inputs(
         raise ValueError(f"Input 'intercept_sign' must be any of: {opts}")
 
 def check_iteration(
-    self
-    ,iterations = None
-    ,trials = None
-    ,hyps_fixed = False
-    ,refresh = False
-    ):
+        InputCollect,
+        iterations = None,
+        trials = None,
+        hyps_fixed = False,
+        refresh = False
+):
     if not refresh:
         if not hyps_fixed:
-            if self.calibration_input is None & iterations < 2000 or trials < 5:
+            if InputCollect["calibration_input"] is None & iterations < 2000 or trials < 5:
                 warnings.warn("We recommend to run at least 2000 iterations per trial and 5 trials to build initial model")
-            elif self.calibration_input is not None & iterations < 2000 or trials < 10:
+            elif InputCollect["calibration_input"] is not None & iterations < 2000 or trials < 10:
                 warnings.warn("You are calibrating MMM. We recommend to run at least 2000 iterations per trial and 10 trials to build initial model")
 
 def check_hyper_fixed(
-    self
-    ,dt_hyper_fixed
-    ,add_penalty_factor
-    ):
-    hyper_fixed = dt_hyper_fixed is not None
+        InputCollect,
+        dt_hyper_fixed,
+        add_penalty_factor
+):
+    hyper_fixed = {}
+    hyper_fixed["hyper_fixed"] = dt_hyper_fixed is not None
     
     # Adstock hyper-parameters
-    hypParamSamName = hp.hyper_names(adstock = self.adstock, all_media = self.all_media)
+    hypParamSamName = hp.hyper_names(adstock = InputCollect["adstock"], all_media = InputCollect["all_media"])
     
     # Add lambda and other hyper-parameters manually
     hypParamSamName = list(hypParamSamName, HYPS_OTHERS)
     
     # Add penalty factor hyper-parameters names
     if add_penalty_factor:
-        for_penalty = self.dt_mod.drop(["ds","dep_var"],axis=1).columns
+        for_penalty = InputCollect["dt_mod"].drop(["ds","dep_var"],axis=1).columns
         hypParamSamName = list(hypParamSamName, f"{for_penalty}_penalty")
     
     if hyper_fixed:
@@ -259,6 +278,6 @@ def check_hyper_fixed(
             these = hypParamSamName.drop(remove_col,axis=1)
             raise ValueError("Input 'dt_hyper_fixed' is invalid.")
     
-    hyper_fixed.hypParamSamName = hypParamSamName
+    hyper_fixed["hypParamSamName"] = hypParamSamName
     
     return hyper_fixed

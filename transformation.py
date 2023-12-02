@@ -3,104 +3,8 @@ import numpy as np
 import re
 from scipy.stats import weibull_min
 
-def run_transformations(self):
-    all_media = self.all_media
-    rollingWindowStartWhich = self.rollingWindowStartWhich
-    rollingWindowEndWhich = self.rollingWindowEndWhich
-    dt_modAdstocked = self.dt_mod.drop(["ds"],axis=1)
-
-    mediaAdstocked = dict()
-    mediaImmediate = list()
-    mediaCarryover = list()
-    mediaVecCum = list()
-    mediaSaturated = list()
-    mediaSaturatedImmediate = list()
-    mediaSaturatedCarryover = list()
-
-    for v in range(len(all_media)):
-        ################################################
-        ## 1. Adstocking (whole data)
-        # Decayed/adstocked response = Immediate response + Carryover response
-        m = dt_modAdstocked[all_media[v]]
-        if self.adstock == "geometric":
-            theta = self.hypParamSam[f"{all_media[v]}_thetas"][0][0]
-        if re.search("weibull", self.adstock) is not None:
-            shape = self.hypParamSam[f"{all_media[v]}_shapes"][0][0]
-            scale = self.hypParamSam[f"{all_media[v]}_scales"][0][0]
-        x_list = self.transform_adstock(m, self.adstock, theta = theta, shape = shape, scale = scale)
-        m_adstocked = x_list.x_decayed
-        mediaAdstocked[v] = m_adstocked
-        m_carryover = m_adstocked - m
-        m[m_carryover < 0] = m_adstocked[m_carryover < 0] # adapt for weibull_pdf with lags
-        m_carryover[m_carryover < 0] = 0 # adapt for weibull_pdf with lags
-        mediaImmediate[v] = m
-        mediaCarryover[v] = m_carryover
-        mediaVecCum[[v]] = x_list.thetaVecCum
-
-        ################################################
-        ## 2. Saturation (only window data)
-        # Saturated response = Immediate response + carryover response
-        m_adstockedRollWind = m_adstocked.loc[rollingWindowStartWhich:rollingWindowEndWhich]
-        m_carryoverRollWind = m_carryover.loc[rollingWindowStartWhich:rollingWindowEndWhich]
-
-        alpha = self.hypParamSam[f"{all_media[v]}_alphas"][0][0]
-        gamma = self.hypParamSam[f"{all_media[v]}_gammas"][0][0]
-        mediaSaturated[v] = self.saturation_hill(
-            m_adstockedRollWind
-            ,alpha = alpha
-            , gamma = gamma
-            )
-        mediaSaturatedCarryover[v] = self.saturation_hill(
-            m_adstockedRollWind
-            ,alpha = alpha
-            ,gamma = gamma
-            ,x_marginal = m_carryoverRollWind
-            )
-        mediaSaturatedImmediate[v] = mediaSaturated[v] - mediaSaturatedCarryover[v]
-
-        mediaAdstocked.name = mediaImmediate.name = mediaCarryover.name = mediaVecCum.name = \
-        mediaSaturated.name = mediaSaturatedImmediate.name = mediaSaturatedCarryover.name = all_media
-        
-        dt_modAdstocked.drop(columns=all_media, inplace=True)
-        dt_modAdstocked = pd.concat([dt_modAdstocked, mediaAdstocked], axis=1)
-        dt_mediaImmediate = pd.concat(mediaImmediate, axis=1)
-        dt_mediaCarryover = pd.concat(mediaCarryover, axis=1)
-        mediaVecCum = pd.concat(mediaVecCum, axis=1)
-        dt_modSaturated = dt_modAdstocked.iloc[rollingWindowStartWhich:rollingWindowEndWhich] \
-                  .drop(all_media, axis=1) \
-                  .join(mediaSaturated)
-
-        dt_saturatedImmediate = pd.concat(mediaSaturatedImmediate, axis=1)
-        dt_saturatedImmediate[dt_saturatedImmediate is None] = 0
-        dt_saturatedCarryover = pd.concat(mediaSaturatedCarryover, axis=1)
-        dt_saturatedCarryover[dt_saturatedCarryover is None] = 0
-        
-        self.dt_modSaturated = dt_modSaturated
-        self.dt_saturatedImmediate = dt_saturatedImmediate
-        self.dt_saturatedCarryover = dt_saturatedCarryover
-
-def transform_adstock(
-    self
-    ,x 
-    ,theta = None
-    ,shape = None
-    ,scale = None
-    ,windlen = None
-    ):
-    if windlen is None:
-        windlen = len(x)
-    # check_adstock(adstock)
-    if self.adstock == "geometric":
-        x_list_sim = self.adstock_geometric(x = x, theta = theta)
-    elif self.adstock == "weibull_cdf":
-        x_list_sim = self.adstock_weibull(x = x, shape = shape, scale = scale, windlen = windlen, type = "cdf")
-    elif self.adstock == "weibull_pdf":
-        x_list_sim = self.adstock_weibull(x = x, shape = shape, scale = scale, windlen = windlen, type = "pdf")
-    return x_list_sim
-
 def saturation_hill(
-    self
-    ,x
+    x
     ,alpha
     ,gamma
     ,x_marginal = None):
@@ -117,8 +21,7 @@ def saturation_hill(
     return x_scurve
 
 def adstock_geometric(
-    self
-    ,x
+    x
     ,theta
     ):
     # stopifnot(length(theta) == 1)
@@ -144,8 +47,7 @@ def adstock_geometric(
         }
 
 def adstock_weibull(
-    self
-    ,x
+    x
     ,shape
     ,scale
     ,windlen = None
@@ -192,9 +94,105 @@ def adstock_weibull(
         ,"inflation_total" : inflation_total
         }
 
-
-def normalize(self,x):
+def normalize(x):
     if (max(x) - min(x) == 0):
         return [1] + [0] * (len(x) - 1)
     else:
         return (x - min(x)) / (max(x) - min(x))
+    
+def transform_adstock(
+    InputCollect
+    ,x 
+    ,theta = None
+    ,shape = None
+    ,scale = None
+    ,windlen = None
+    ):
+    if windlen is None:
+        windlen = len(x)
+    # check_adstock(adstock)
+    if InputCollect["adstock"] == "geometric":
+        x_list_sim = adstock_geometric(x = x, theta = theta)
+    elif InputCollect["adstock"] == "weibull_cdf":
+        x_list_sim = adstock_weibull(x = x, shape = shape, scale = scale, windlen = windlen, type = "cdf")
+    elif InputCollect["adstock"] == "weibull_pdf":
+        x_list_sim = adstock_weibull(x = x, shape = shape, scale = scale, windlen = windlen, type = "pdf")
+    return x_list_sim
+
+def run_transformations(InputCollect,hypParamSam):
+    all_media = InputCollect["all_media"]
+    rollingWindowStartWhich = InputCollect["rollingWindowStartWhich"]
+    rollingWindowEndWhich = InputCollect["rollingWindowEndWhich"]
+    dt_modAdstocked = InputCollect["dt_mod"].drop(["ds"],axis=1)
+
+    mediaAdstocked = dict()
+    mediaImmediate = list()
+    mediaCarryover = list()
+    mediaVecCum = list()
+    mediaSaturated = list()
+    mediaSaturatedImmediate = list()
+    mediaSaturatedCarryover = list()
+
+    for v in range(len(all_media)):
+        ################################################
+        ## 1. Adstocking (whole data)
+        # Decayed/adstocked response = Immediate response + Carryover response
+        m = dt_modAdstocked[all_media[v]]
+        if InputCollect["adstock"] == "geometric":
+            theta = hypParamSam[f"{all_media[v]}_thetas"][0][0]
+        if re.search("weibull", InputCollect["adstock"]) is not None:
+            shape = hypParamSam[f"{all_media[v]}_shapes"][0][0]
+            scale = hypParamSam[f"{all_media[v]}_scales"][0][0]
+        x_list = transform_adstock(m, InputCollect["adstock"], theta = theta, shape = shape, scale = scale)
+        m_adstocked = x_list.x_decayed
+        mediaAdstocked[v] = m_adstocked
+        m_carryover = m_adstocked - m
+        m[m_carryover < 0] = m_adstocked[m_carryover < 0] # adapt for weibull_pdf with lags
+        m_carryover[m_carryover < 0] = 0 # adapt for weibull_pdf with lags
+        mediaImmediate[v] = m
+        mediaCarryover[v] = m_carryover
+        mediaVecCum[[v]] = x_list.thetaVecCum
+
+        ################################################
+        ## 2. Saturation (only window data)
+        # Saturated response = Immediate response + carryover response
+        m_adstockedRollWind = m_adstocked.loc[rollingWindowStartWhich:rollingWindowEndWhich]
+        m_carryoverRollWind = m_carryover.loc[rollingWindowStartWhich:rollingWindowEndWhich]
+
+        alpha = hypParamSam[f"{all_media[v]}_alphas"][0][0]
+        gamma = hypParamSam[f"{all_media[v]}_gammas"][0][0]
+        mediaSaturated[v] = saturation_hill(
+            m_adstockedRollWind
+            ,alpha = alpha
+            , gamma = gamma
+            )
+        mediaSaturatedCarryover[v] = saturation_hill(
+            m_adstockedRollWind
+            ,alpha = alpha
+            ,gamma = gamma
+            ,x_marginal = m_carryoverRollWind
+            )
+        mediaSaturatedImmediate[v] = mediaSaturated[v] - mediaSaturatedCarryover[v]
+
+        mediaAdstocked.name = mediaImmediate.name = mediaCarryover.name = mediaVecCum.name = \
+        mediaSaturated.name = mediaSaturatedImmediate.name = mediaSaturatedCarryover.name = all_media
+        
+        dt_modAdstocked.drop(columns=all_media, inplace=True)
+        dt_modAdstocked = pd.concat([dt_modAdstocked, mediaAdstocked], axis=1)
+        dt_mediaImmediate = pd.concat(mediaImmediate, axis=1)
+        dt_mediaCarryover = pd.concat(mediaCarryover, axis=1)
+        mediaVecCum = pd.concat(mediaVecCum, axis=1)
+        dt_modSaturated = dt_modAdstocked.iloc[rollingWindowStartWhich:rollingWindowEndWhich] \
+                  .drop(all_media, axis=1) \
+                  .join(mediaSaturated)
+
+        dt_saturatedImmediate = pd.concat(mediaSaturatedImmediate, axis=1)
+        dt_saturatedImmediate[dt_saturatedImmediate is None] = 0
+        dt_saturatedCarryover = pd.concat(mediaSaturatedCarryover, axis=1)
+        dt_saturatedCarryover[dt_saturatedCarryover is None] = 0
+        
+        return {
+            "dt_modSaturated" : dt_modSaturated,
+            "dt_saturatedImmediate" : dt_saturatedImmediate,
+            "dt_saturatedCarryover" : dt_saturatedCarryover
+        }
