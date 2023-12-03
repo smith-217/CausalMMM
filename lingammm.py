@@ -3,17 +3,17 @@ import numpy as np
 import warnings
 import os
 import re
-import CausalMMM.old.checks as ck
+import CausalMMM.checks as ck
 from datetime import datetime as dt
 # import LiNGAMMM.refresh as ref
-import hyper_params as hp
+import CausalMMM.hyper_params as hp
 import nevergrad as ng
 import math
 from tqdm import tqdm
 import time
 from scipy.stats import uniform
-import lingam_model as lm
-import transformation as trs
+import CausalMMM.lingam_model as lm
+import CausalMMM.transformation as trs
 # from concurrent.futures import ThreadPoolExecutor
 from sklearn.preprocessing import scale
 from sklearn.linear_model import Ridge
@@ -154,7 +154,7 @@ def model_decomp(
     return dec_out
 
 # Must remain within this function for it to work
-def robyn_iterations(
+def lingammm_iterations(
         InputCollect,
         i,
         hypParamSam,
@@ -404,7 +404,7 @@ def robyn_iterations(
         
         return resultCollect
 
-def robyn_mmm(InputCollect,hyper_collect,iterations,nevergrad_algo,intercept_sign,ts_validation = True
+def lingammm(InputCollect,hyper_collect,iterations,nevergrad_algo,intercept_sign,ts_validation = True
                 ,add_penalty_factor = False,dt_hyper_fixed = None,rssd_zero_penalty = True
                 ,refresh = False,trial = 1,seed = 123,quiet = False):
     ################################################
@@ -539,7 +539,7 @@ def robyn_mmm(InputCollect,hyper_collect,iterations,nevergrad_algo,intercept_sig
         ########### start
         # if calibration_input is not None: lift_cal_collect = {}
 
-        doparCollect = robyn_iterations(lng,hypParamSamNG,lambda_min,lambda_max,lambda_min_ratio,trial,add_penalty_factor,causal_mod,ts_validation)
+        doparCollect = lingammm_iterations(lng,hypParamSamNG,lambda_min,lambda_max,lambda_min_ratio,trial,add_penalty_factor,causal_mod,ts_validation)
         # nrmse_collect.append(doparCollect["resultHypParam"]["nrmse"])
         # decomp_rssd_collect.append(doparCollect["resultHypParam"]["decomp.rssd"])
         # mape_lift_collect.append(doparCollect["resultHypParam"]["mape"])
@@ -548,7 +548,7 @@ def robyn_mmm(InputCollect,hyper_collect,iterations,nevergrad_algo,intercept_sig
         if not hyper_fixed:
             # if calibration_input is None:
             # optimizer.tell(nevergrad_hp[lng], [nrmse_collect[lng-1], decomp_rssd_collect[lng-1]])
-            optimizer.tell(nevergrad_hp[lng], [doparCollect["resultHypParam"]["nrmse"], doparCollect["resultHypParam"]["decomp.rssd"])])
+            optimizer.tell(nevergrad_hp[lng], [doparCollect["resultHypParam"]["nrmse"], doparCollect["resultHypParam"]["decomp.rssd"]])
             # else:
             #     optimizer.tell(nevergrad_hp[lng], [nrmse_collect[lng-1], decomp_rssd_collect[lng-1], mape_lift_collect[lng-1]])
         
@@ -561,7 +561,7 @@ def robyn_mmm(InputCollect,hyper_collect,iterations,nevergrad_algo,intercept_sig
 
     return resultCollect
 
-def robyn_train(
+def lingammm_train(
         InputCollect,
         hyper_collect,
         iterations,
@@ -580,7 +580,7 @@ def robyn_train(
 
     if hyper_fixed:
         OutputModels = {}
-        OutputModels["trial1"] = robyn_mmm(InputCollect, hyper_collect = hyper_collect,iterations = iterations,nevergrad_algo = nevergrad_algo,
+        OutputModels["trial1"] = lingammm(InputCollect, hyper_collect = hyper_collect,iterations = iterations,nevergrad_algo = nevergrad_algo,
                                  intercept_sign = intercept_sign,dt_hyper_fixed = dt_hyper_fixed,ts_validation = ts_validation,
                                  add_penalty_factor = add_penalty_factor,rssd_zero_penalty = rssd_zero_penalty,seed = seed,
                                  quiet = quiet)
@@ -599,10 +599,10 @@ def robyn_train(
         for ngt in range(1,trials+1):
             if not quiet:
                 print(f"  Running trial {ngt} of {trials}")
-            model_output = robyn_mmm(InputCollect, hyper_collect = hyper_collect,iterations = iterations,nevergrad_algo = nevergrad_algo,
+            model_output = lingammm(InputCollect, hyper_collect = hyper_collect,iterations = iterations,nevergrad_algo = nevergrad_algo,
                                         intercept_sign = intercept_sign,ts_validation = ts_validation,add_penalty_factor = add_penalty_factor,
                                         rssd_zero_penalty = rssd_zero_penalty,refresh = refresh,trial = ngt,seed = seed + ngt,
-                                        quiet = quiet,causal_mod = causal_mod)
+                                        quiet = quiet)
 
             check_coef0 = any([s == float('inf') for s in model_output["resultHypParam"]["decomp_rssd"]])
             if check_coef0:
@@ -612,7 +612,7 @@ def robyn_train(
             OutputModels[f"trial{ngt}"] = model_output
     return OutputModels
 
-def robyn_run(
+def lingammm_run(
        InputCollect,
        dt_hyper_fixed = None,
        ts_validation = False,
@@ -627,19 +627,19 @@ def robyn_run(
        rssd_zero_penalty = True,
        nevergrad_algo = "TwoPointsDE",
        intercept_sign = "non_negative",
-       lambda_control = None 
+       lambda_control = None
 ):
 
     t0 = dt.now()
     # Use previously exported model (Consider to add in the future)
 
-    if InputCollect["hyper_params"] is None: raise ValueError("Must provide 'hyperparameters' in robyn_inputs()'s output first")
+    if InputCollect["hyperparameters"] is None: raise ValueError("Must provide 'hyperparameters' in robyn_inputs()'s output first")
     
     hyps_fixed = dt_hyper_fixed is not None
 
     if hyps_fixed: trials = iterations = 1
     
-    ck.check_run_inputs(InputCollect, cores,iterations,trials,intercept_sign,nevergrad_algo)
+    ck.check_run_inputs(iterations,trials,intercept_sign,nevergrad_algo)
 
     # currently unable to calibrate
     calibration_input = None
@@ -649,12 +649,11 @@ def robyn_run(
 
     #####################################
     #### Prepare hyper-parameters
-    hyper_collect = hp.hyper_collector(InputCollect["adstock"],InputCollect["all_media"],InputCollect["dt_mod"]
-                                        ,InputCollect["hyper_params"],ts_validation,add_penalty_factor,dt_hyper_fixed,cores)
+    hyper_collect = hp.hyper_collector(InputCollect,ts_validation,add_penalty_factor,dt_hyper_fixed,cores)
 
     hyper_updated = hyper_collect["hyper_list_all"]
 
-    robyn_outputs = robyn_train(
+    robyn_outputs = lingammm_train(
         InputCollect,
         hyper_collect,
         iterations = iterations,
@@ -671,7 +670,6 @@ def robyn_run(
     )
 
     robyn_outputs["hyper_fixed"] = hyper_collect["all_fixed"]
-    # self.OutputModels.attr["bootstrap"] = bootstrap
     robyn_outputs["refresh"] = refresh
 
     if True:
@@ -704,50 +702,5 @@ def robyn_run(
     output["seed"] = seed
     
     return output
-
-def model_refit(self,x_train,y_train,x_val,y_val,x_test,y_test,lambda_,lower_limits,upper_limits,intercept_sign = "non_negative",penalty_factor = None):
-    if penalty_factor is None: penalty_factor = np.ones(y_train.shape[1])
-    
-    # mod = glmnet(x_train, y_train, alpha=0, lambdau=lambda_, lower_limits = lower_limits, upper_limits=upper_limits, scoring = "mean_squared_error", penalty_factor=penalty_factor)
-    mod = Ridge(alpha=0)
-    mod.fit(x_train, y_train)
-    
-    df_int = 1
-
-    if intercept_sign == "non_negative" and mod.coef_[0]<0:
-        # mod = glmnet(x_train, y_train, alpha = 0, lambdau = lambda_, lower_limits = lower_limits, upper_limits = upper_limits, penalty_factor = penalty_factor, fit_intercept = False)
-        mod = Ridge(alpha=0,fit_intercept=False)
-        mod.fit(x_train, y_train)
-
-        df_int = 1 
-
-    # Calculate all Adjusted R2
-    y_train_pred = mod.predict(x_train)
-    rsq_train = lm.get_rsq_py(true = y_train, predicted = y_train_pred, p = x_train.shape[1], df_int = df_int)
-    if x_val is not None:
-        y_val_pred = mod.predict(x_val) 
-        rsq_val = lm.get_rsq_py(true = y_val, predicted = y_val_pred, p = x_val.shape[1], df_int = df_int, n_train = len(y_train))
-        y_test_pred = mod.predict(x_test)
-        rsq_test = lm.get_rsq_py(true = y_test, predicted = y_test_pred, p = x_test.shape[1], df_int = df_int, n_train = len(y_train))
-        y_pred = np.concatenate((y_train_pred, y_val_pred, y_test_pred))
-    else:
-        rsq_val = rsq_test = None
-        y_pred = y_train_pred
-    
-    # Calculate all NRMSE
-    nrmse_train = np.sqrt(np.mean((y_train - y_train_pred)**2)) / (max(y_train) - min(y_train))
-    if x_val is not None:
-        nrmse_val = np.sqrt(np.mean(sum((y_val - y_val_pred)**2))) / (max(y_val) - min(y_val))
-        nrmse_test = np.sqrt(np.mean(sum((y_test - y_test_pred)**2))) / (max(y_test) - min(y_test))
-    else:
-        nrmse_val = nrmse_test = y_val_pred = y_test_pred = None
-    
-    coef_df = pd.DataFrame(mod.coef_).T
-    coef_df.columns = mod.feature_names_in_
-
-    return {"rsq_train" : rsq_train,"rsq_val" : rsq_val,"rsq_test" : rsq_test,"nrmse_train" : nrmse_train
-            ,"nrmse_val" : nrmse_val,"nrmse_test" : nrmse_test,"coefs" : mod.coef_,"mod" : mod
-            ,"y_train_pred" : y_train_pred,"y_val_pred" : y_val_pred,"y_test_pred" : y_test_pred
-            ,"y_pred" : y_pred,"df_int" : df_int,"coef_df" : coef_df}
 
 

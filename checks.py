@@ -2,10 +2,10 @@ import pandas as pd
 import numpy as np
 from datetime import datetime as dt
 import warnings
-import hyper_params as hp
+import CausalMMM.hyper_params as hp
 
-OPTS_PDN = list("positive", "negative", "default")
-HYPS_OTHERS = list("lambda", "train_size")
+OPTS_PDN = ["positive", "negative", "default"]
+HYPS_OTHERS = ["lambda", "train_size"]
 
 def check_datevar(
     InputCollect,
@@ -70,7 +70,7 @@ def check_prophet(
         warnings.warn("Ignoring prophet_vars = 'weekday' input given your data granularity")
     if prophet_country is None or len(prophet_country) > 1 or prophet_country not in InputCollect["dt_holidays"]["country"].unique():
       raise ValueError(
-        f"You must provide 1 country code in 'prophet_country' input. {len(InputCollect["dt_holidays"]["country"].unique())} countries are included: {InputCollect["dt_holidays"]["country"].unique()} \n If your country is not available, please manually add it to 'dt_holidays'"
+        f"You must provide 1 country code in 'prophet_country' input. {len(InputCollect['dt_holidays']['country'].unique())} countries are included: {InputCollect['dt_holidays']['country'].unique()} \n If your country is not available, please manually add it to 'dt_holidays'"
         )    
     if prophet_signs is None:
         prophet_signs = ["default"] * len(InputCollect["prophet_vars"])
@@ -232,7 +232,7 @@ def check_run_inputs(
         raise ValueError("Must provide 'trials' in robyn_run()")
     if nevergrad_algo is None:
         raise ValueError("Must provide 'nevergrad_algo' in robyn_run()")
-    opts = list("non_negative", "unconstrained")
+    opts = ["non_negative", "unconstrained"]
     if intercept_sign not in opts:
         raise ValueError(f"Input 'intercept_sign' must be any of: {opts}")
 

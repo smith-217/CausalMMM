@@ -1,20 +1,20 @@
 import pandas as pd
 import numpy as np
 import itertools
-import CausalMMM.old.checks as ck
+import CausalMMM.checks as ck
 import warnings
 
-HYPS_NAMES = list("thetas", "shapes", "scales", "alphas", "gammas")
-HYPS_OTHERS = list("lambda", "train_size")
+HYPS_NAMES = ["thetas", "shapes", "scales", "alphas", "gammas"]
+HYPS_OTHERS = ["lambda", "train_size"]
 
-def hyper_names(InputCollect,all_media):
+def hyper_names(InputCollect):
     # adstock = check_adstock(adstock)
+    local_name = []
     if InputCollect["adstock"] == "geometric":
-        local_name = []
         for media, hyp in itertools.product(all_media, HYPS_NAMES):
             if any(s in hyp for s in ['thetas', 'alphas', 'gammas']):
                 local_name.append(f'{media}_{hyp}')
-    elif InputCollect["adstock"] in list("weibull_cdf", "weibull_pdf"):
+    elif InputCollect["adstock"] in ["weibull_cdf", "weibull_pdf"]:
         local_name = sorted(['_'.join(x) for x in itertools.product(all_media, [x for x in HYPS_NAMES if 'shapes' in x or 'scales' in x or 'alphas' in x or 'gammas' in x])])
     
     InputCollect["local_name"] = local_name
@@ -33,14 +33,14 @@ def check_hyperparameters(
         # Adstock hyperparameters check
         hyperparameters_ordered = dict(sorted(InputCollect["hyperparameters"].items()))
         get_hyp_names = hyperparameters_ordered.keys()
-        original_order = list(map(lambda x: list(get_hyp_names).index(x) + 1, hyperparameters.keys()))
+        original_order = [map(lambda x: list(get_hyp_names).index(x) + 1, hyperparameters.keys())]
         ref_hyp_name_spend = hyper_names(all_media = InputCollect["paid_media_spends"])
         ref_hyp_name_expo = hyper_names(all_media = exposure_vars)
         ref_hyp_name_org = hyper_names(all_media = InputCollect["organic_vars"])
         ref_hyp_name_other = [x for x in get_hyp_names if x in HYPS_OTHERS]
         # Excluding lambda (first HYPS_OTHERS) given its range is not customizable
         # ref_all_media = sorted(ref_hyp_name_spend + ref_hyp_name_org + HYPS_OTHERS)
-        all_ref_names = list(ref_hyp_name_spend, ref_hyp_name_expo, ref_hyp_name_org, HYPS_OTHERS)
+        all_ref_names = [ref_hyp_name_spend, ref_hyp_name_expo, ref_hyp_name_org, HYPS_OTHERS]
         all_ref_names = sorted(all_ref_names)
         if not all(get_hyp_names in all_ref_names):
             wrong_hyp_names = get_hyp_names[~np.isin(get_hyp_names, all_ref_names)]
@@ -59,15 +59,15 @@ def hyper_collector(
     cores = None
     ):
     # Fetch hyper-parameters based on media
-    hypParamSamName = hyper_names(adstock = InputCollect["adstock"], all_media = InputCollect["all_media"])
+    hypParamSamName = hyper_names(InputCollect)
     
     # Manually add other hyper-parameters
-    hypParamSamName = list(hypParamSamName, HYPS_OTHERS)
+    hypParamSamName = [hypParamSamName, HYPS_OTHERS]
     
     # Add penalty factor hyper-parameters names
-    for_penalty = InputCollect["dt_mod"].drop(["ds","dep_var"],axis=1).columns
+    for_penalty = pd.DataFrame(InputCollect["dt_mod"]).drop(["ds","dep_var"],axis=1).columns
     if add_penalty_factor:
-        hypParamSamName = list(hypParamSamName + f"penalty_{for_penalty}")
+        hypParamSamName = [hypParamSamName + f"penalty_{for_penalty}"]
     
     # Check hyper_fixed condition + add lambda + penalty factor hyper-parameters names
     all_fixed = ck.check_hyper_fixed(InputCollect, dt_hyper_fixed, add_penalty_factor)
