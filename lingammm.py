@@ -409,6 +409,7 @@ def lingammm(InputCollect,hyper_collect,iterations,nevergrad_algo,intercept_sign
                 ,refresh = False,trial = 1,seed = 123,quiet = False):
     ################################################
     #### Collect hyperparameters
+    print("Collect hyperparameters")
     if True:
         hypParamSamName = hyper_collect["hyper_list_all"]
         # Optimization hyper-parameters
@@ -423,16 +424,12 @@ def lingammm(InputCollect,hyper_collect,iterations,nevergrad_algo,intercept_sign
         hyper_fixed = hyper_collect["all_fixed"]
     
     ## Get environment for parallel backend
+    print("Get environment for parallel backend")
     if True:
-        # self.nevergrad_algo = nevergrad_algo
-        # self.ts_validation = ts_validation
-        # self.add_penalty_factor = add_penalty_factor
-        # self.intercept_sign = intercept_sign
         i = None
         rssd_zero_penalty = rssd_zero_penalty
-        if InputCollect["refresh_steps"] is None: refresh_steps = 0
+        if "refresh_steps" not in InputCollect.keys() or InputCollect["refresh_steps"] is None: refresh_steps = 0
         else: refresh_steps = InputCollect["refresh_steps"]
-        # self.trial = trial
 
     ################################################
     #### Setup environment
@@ -441,26 +438,26 @@ def lingammm(InputCollect,hyper_collect,iterations,nevergrad_algo,intercept_sign
     
     ################################################
     #### Get spend share
-    dt_inputTrain = InputCollect["dt_input"].loc[InputCollect["rollingWindowStartWhich"]:InputCollect["rollingWindowEndWhich"]]
+    dt_inputTrain = pd.DataFrame.from_dict(InputCollect["dt_input"]).loc[InputCollect["rollingWindowStartWhich"][0]:InputCollect["rollingWindowEndWhich"][0]]
     temp = dt_inputTrain[InputCollect["paid_media_spends"]]
     dt_spendShare = pd.DataFrame({
-        'rn': InputCollect["paid_media_spends"],
-        'total_spend': temp.sum(axis=0),
-        'mean_spend': temp.mean(axis=0)
+        "rn": InputCollect["paid_media_spends"],
+        "total_spend": temp.sum(axis=0),
+        "mean_spend": temp.mean(axis=0)
         })
-    dt_spendShare['spend_share'] = dt_spendShare['total_spend'] / dt_spendShare['total_spend'].sum()
-    refreshAddedStartWhich = InputCollect["dt_modRollWind"].index[InputCollect["dt_modRollWind"]['ds']==InputCollect["refreshAddedStart"]].tolist()[0]
+    dt_spendShare["spend_share"] = dt_spendShare["total_spend"] / dt_spendShare["total_spend"].sum()
+    refreshAddedStartWhich = InputCollect["dt_modRollWind"].index[InputCollect["dt_modRollWind"]["ds"]==InputCollect["refreshAddedStart"]].tolist()[0]
     
     temp = dt_inputTrain[InputCollect["paid_media_spends"]].loc[refreshAddedStartWhich:refreshAddedStartWhich+InputCollect["rollingWindowLength"]]
 
     dt_spendShareRF = pd.DataFrame({
-        'rn': InputCollect["paid_media_spends"],
-        'total_spend': temp.sum(axis=0),
-        'mean_spend': temp.mean(axis=0)
+        "rn": InputCollect["paid_media_spends"],
+        "total_spend": temp.sum(axis=0),
+        "mean_spend": temp.mean(axis=0)
         })
 
-    dt_spendShareRF['spend_share'] = dt_spendShareRF['total_spend'] / dt_spendShareRF['total_spend'].sum()
-    dt_spendShare = dt_spendShare.merge(dt_spendShareRF, on='rn', suffixes=('', '_refresh'), how='left')
+    dt_spendShareRF["spend_share"] = dt_spendShareRF["total_spend"] / dt_spendShareRF["total_spend"].sum()
+    dt_spendShare = dt_spendShare.merge(dt_spendShareRF, on="rn", suffixes=("", "_refresh"), how="left")
 
     ################################################
     #### Get lambda
@@ -576,7 +573,8 @@ def lingammm_train(
         seed = 123,
         quiet = False
 ):
-    hyper_fixed = hyper_collect["all_fixed"]
+    hyper_fixed = hyper_collect["all_fixed"]["hyper_fixed"]
+    print("all_fixed: ", hyper_collect["all_fixed"])
 
     if hyper_fixed:
         OutputModels = {}
@@ -587,7 +585,7 @@ def lingammm_train(
         OutputModels["trial"] = 1
 
         if "solID" in dt_hyper_fixed:
-            these = list("resultHypParam", "xDecompVec", "xDecompAgg", "decompSpendDist")
+            these = ["resultHypParam", "xDecompVec", "xDecompAgg", "decompSpendDist"]
             for tab in these:
                 OutputModels[tab]["solID"] = dt_hyper_fixed["solID"]
     else:
@@ -649,7 +647,11 @@ def lingammm_run(
 
     #####################################
     #### Prepare hyper-parameters
-    hyper_collect = hp.hyper_collector(InputCollect,ts_validation,add_penalty_factor,dt_hyper_fixed,cores)
+    hyper_collect = hp.hyper_collector(InputCollect,
+                                       ts_validation = ts_validation,
+                                       add_penalty_factor = add_penalty_factor,
+                                       dt_hyper_fixed = dt_hyper_fixed,
+                                       cores = cores)
 
     hyper_updated = hyper_collect["hyper_list_all"]
 

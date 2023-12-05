@@ -259,24 +259,25 @@ def check_hyper_fixed(
     hyper_fixed["hyper_fixed"] = dt_hyper_fixed is not None
     
     # Adstock hyper-parameters
-    hypParamSamName = hp.hyper_names(adstock = InputCollect["adstock"], all_media = InputCollect["all_media"])
+    hypParamSamName = hp.hyper_names(InputCollect)
     
     # Add lambda and other hyper-parameters manually
-    hypParamSamName = list(hypParamSamName, HYPS_OTHERS)
+    hypParamSamName = [hypParamSamName, HYPS_OTHERS]
     
     # Add penalty factor hyper-parameters names
     if add_penalty_factor:
         for_penalty = InputCollect["dt_mod"].drop(["ds","dep_var"],axis=1).columns
-        hypParamSamName = list(hypParamSamName, f"{for_penalty}_penalty")
+        hypParamSamName = [hypParamSamName, f"{for_penalty}_penalty"]
     
     if hyper_fixed:
         ## Run robyn_mmm if using old model result tables
-        if dt_hyper_fixed.shape[0] != 1:
-            raise ValueError("Provide only 1 model / 1 row from OutputCollect$resultHypParam or pareto_hyperparameters.csv from previous runs")
-        if not all(hypParamSamName in dt_hyper_fixed.columns):
-            remove_col = hypParamSamName in dt_hyper_fixed.columns
-            these = hypParamSamName.drop(remove_col,axis=1)
-            raise ValueError("Input 'dt_hyper_fixed' is invalid.")
+        if dt_hyper_fixed is not None:
+            if dt_hyper_fixed.shape[0] != 1:
+                raise ValueError("Provide only 1 model / 1 row from OutputCollect$resultHypParam or pareto_hyperparameters.csv from previous runs")
+            if not all(hypParamSamName in dt_hyper_fixed.columns):
+                remove_col = hypParamSamName in dt_hyper_fixed.columns
+                these = hypParamSamName.drop(remove_col,axis=1)
+                raise ValueError("Input 'dt_hyper_fixed' is invalid.")
     
     hyper_fixed["hypParamSamName"] = hypParamSamName
     

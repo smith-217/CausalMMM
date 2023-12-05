@@ -11,7 +11,7 @@ def hyper_names(InputCollect):
     # adstock = check_adstock(adstock)
     local_name = []
     if InputCollect["adstock"] == "geometric":
-        for media, hyp in itertools.product(all_media, HYPS_NAMES):
+        for media, hyp in itertools.product(InputCollect["all_media"], HYPS_NAMES):
             if any(s in hyp for s in ['thetas', 'alphas', 'gammas']):
                 local_name.append(f'{media}_{hyp}')
     elif InputCollect["adstock"] in ["weibull_cdf", "weibull_pdf"]:
@@ -52,22 +52,24 @@ def check_hyperparameters(
 
 def hyper_collector(
     InputCollect,
-    hyper_in = None,
     ts_validation = False,
     add_penalty_factor = False,
     dt_hyper_fixed = None,
     cores = None
     ):
+    
+    hyper_in = InputCollect["hyperparameters"]
+
     # Fetch hyper-parameters based on media
     hypParamSamName = hyper_names(InputCollect)
     
     # Manually add other hyper-parameters
-    hypParamSamName = [hypParamSamName, HYPS_OTHERS]
+    hypParamSamName = hypParamSamName+HYPS_OTHERS
     
     # Add penalty factor hyper-parameters names
     for_penalty = pd.DataFrame(InputCollect["dt_mod"]).drop(["ds","dep_var"],axis=1).columns
     if add_penalty_factor:
-        hypParamSamName = [hypParamSamName + f"penalty_{for_penalty}"]
+        hypParamSamName = hypParamSamName + [f"penalty_{for_penalty}"]
     
     # Check hyper_fixed condition + add lambda + penalty factor hyper-parameters names
     all_fixed = ck.check_hyper_fixed(InputCollect, dt_hyper_fixed, add_penalty_factor)
@@ -76,17 +78,18 @@ def hyper_collector(
         # Collect media hyperparameters
         hyper_bound_list = {}
         for i in range(len(hypParamSamName)):
-            hyper_bound_list[hypParamSamName[i]] = hyper_in[hypParamSamName[i]]
+            if hypParamSamName[i] in hyper_in:
+                hyper_bound_list[hypParamSamName[i]] = hyper_in[hypParamSamName[i]]
 
         # Add unfixed lambda hyperparameter manually
-        if len(hyper_bound_list["lambda"]) != 1:
+        if "lambda" not in hyper_bound_list.keys():
             hyper_bound_list["lambda"] = [0, 1]
 
         # Add unfixed train_size hyperparameter manually
         if ts_validation:
             if "train_size" not in hyper_bound_list.keys():
                 hyper_bound_list["train_size"] = [0.5, 0.8]
-            print(f"Time-series validation with train_size range of {100 * hyper_bound_list.train_size}% of the data...")
+            # print(f"Time-series validation with train_size range of {100 * hyper_bound_list['train_size']}% of the data...")
         else:
             if "train_size" in hyper_bound_list.keys():
                 warnings.warn("Provided train_size but ts_validation = FALSE. Time series validation inactive.")
@@ -95,7 +98,7 @@ def hyper_collector(
             print("Fitting time series with all available data...")
 
         # Add unfixed penalty.factor hyperparameters manually
-        for_penalty = InputCollect["dt_mod"].drop(["ds","dep_var"],axis=1).columns
+        for_penalty = pd.DataFrame.from_dict(InputCollect["dt_mod"]).drop(["ds","dep_var"],axis=1).columns
         penalty_names = f"{for_penalty}_penalty"
         if add_penalty_factor:
             for penalty in penalty_names:
@@ -103,16 +106,24 @@ def hyper_collector(
                     hyper_bound_list[penalty] = [0, 1]
 
         # Get hyperparameters for Nevergrad
-        hyper_bound_list_updated = [x for x in hyper_bound_list if len(x) == 2]
+        # hyper_list_bind = {}
+        hyper_bound_list_updated = {}
+        hyper_bound_list_fixed = {}
+        for x in hyper_bound_list.keys():
+            if len(hyper_bound_list[x]) == 2:
+                hyper_bound_list_updated[x] = hyper_bound_list[x]
+            if len(hyper_bound_list[x]) == 1:
+                hyper_bound_list_fixed[x] = hyper_bound_list[x]
 
-        # Get fixed hyperparameters
-        hyper_bound_list_fixed = [x for x in hyper_bound_list if len(x) == 1]
+        # # Get fixed hyperparameters
+        # hyper_bound_list_fixed = [hyper_bound_list[x] for x in hyper_bound_list.keys() if len(hyper_bound_list[x]) == 1]
 
-        hyper_list_bind = hyper_bound_list_updated+hyper_bound_list_fixed
+        hyper_list_bind = dict(hyper_bound_list_updated, **hyper_bound_list_fixed)
     
         hyper_list_all = {}
         for i in range(len(hypParamSamName)):
-            hyper_list_all[hypParamSamName[i]] = hyper_list_bind[hypParamSamName[i]]
+            if hypParamSamName[i] in hyper_list_bind:
+                hyper_list_all[hypParamSamName[i]] = hyper_list_bind[hypParamSamName[i]]
 
         hyper_bound_list_fixed_rep = [item for sublist in hyper_bound_list_fixed for item in [sublist] * cores]
         s = pd.Series(hyper_bound_list_fixed_rep)
