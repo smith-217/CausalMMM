@@ -10,12 +10,12 @@ HYPS_OTHERS = ["lambda", "train_size"]
 def hyper_names(InputCollect):
     # adstock = check_adstock(adstock)
     local_name = []
-    if InputCollect["adstock"] == "geometric":
+    if InputCollect["adstock"][0] == "geometric":
         for media, hyp in itertools.product(InputCollect["all_media"], HYPS_NAMES):
             if any(s in hyp for s in ['thetas', 'alphas', 'gammas']):
                 local_name.append(f'{media}_{hyp}')
-    elif InputCollect["adstock"] in ["weibull_cdf", "weibull_pdf"]:
-        local_name = sorted(['_'.join(x) for x in itertools.product(all_media, [x for x in HYPS_NAMES if 'shapes' in x or 'scales' in x or 'alphas' in x or 'gammas' in x])])
+    elif InputCollect["adstock"][0] in ["weibull_cdf", "weibull_pdf"]:
+        local_name = sorted(['_'.join(x) for x in itertools.product(InputCollect["all_media"], [x for x in HYPS_NAMES if 'shapes' in x or 'scales' in x or 'alphas' in x or 'gammas' in x])])
     
     InputCollect["local_name"] = local_name
     return local_name
@@ -109,6 +109,7 @@ def hyper_collector(
         # hyper_list_bind = {}
         hyper_bound_list_updated = {}
         hyper_bound_list_fixed = {}
+        
         for x in hyper_bound_list.keys():
             if len(hyper_bound_list[x]) == 2:
                 hyper_bound_list_updated[x] = hyper_bound_list[x]

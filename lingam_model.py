@@ -16,26 +16,27 @@ def lingam_model(
         return lingam.DirectLiNGAM().fit(input_df)
 
 def causal_transform(
-      X,
-      y,
-      lg_model
-      ):
-   ce = lingam.CausalEffect(lg_model)
-   input_df = pd.concat([y,X],axis=1)
-   mat_ = check_array(input_df)
-   ce._check_init_params()
+        X,
+        y,
+        lg_model
+):
+    ce = lingam.CausalEffect(lg_model)
+    input_df = pd.concat([y,X],axis=1)
+    mat_ = check_array(input_df)
+    ce._check_init_params()
+    print("_causal_order: ", ce._causal_order)
 
-   all_effected_list = []
+    # all_effected_dict = {}
+    all_effected_list = []
 
-   for each_row in mat_:
+    for each_row in mat_:
       En = each_row - np.dot(ce._B, each_row)
       effects = np.zeros(len(ce._causal_order))
       
       for i in ce._causal_order:
-         effects[i] = np.dot(ce._B[i, :], effects) + En[i]
-         all_effected_list.append(effects)
-
-   return pd.DataFrame(all_effected_list)[[0]], pd.DataFrame(all_effected_list).iloc[:,1:]
+        effects[i] = np.dot(ce._B[i, :], effects) + En[i]
+      all_effected_list.append([s for s in effects])
+    return pd.DataFrame(all_effected_list).iloc[:,0], pd.DataFrame(all_effected_list).iloc[:,1:]
 
 def get_rsq_py(
         true, 
@@ -106,7 +107,7 @@ def causal_prediction(x_train,y_train,x_val,y_val,x_test,y_test,lambda_scaled,pr
           ,n_train = len(y_tr_trans)
           )
           
-        y_pred = pd.concat([y_tr_pred, y_val_pred, y_test_pred])
+        y_pred = pd.concat([pd.DataFrame(y_tr_pred), pd.DataFrame(y_val_pred), pd.DataFrame(y_test_pred)])
       else:
         rsq_val = rsq_test = np.nan
         y_pred = y_tr_pred
@@ -119,6 +120,10 @@ def causal_prediction(x_train,y_train,x_val,y_val,x_test,y_test,lambda_scaled,pr
       else:
         nrmse_val = nrmse_test = y_val_pred = y_test_pred = np.nan
       
+      print("coef_: ",mod.coef_)
+      coef_df = pd.DataFrame(mod.coef_)
+      coef_df.columns = x_train.columns
+      
       return {
          "rsq_train" : rsq_train,
          "rsq_val" : rsq_val,
@@ -126,7 +131,7 @@ def causal_prediction(x_train,y_train,x_val,y_val,x_test,y_test,lambda_scaled,pr
          "nrmse_train" : nrmse_train,
          "nrmse_val" : nrmse_val,
          "nrmse_test" : nrmse_test,
-         "coefs" : mod.coef_,
+         "coefs" : coef_df,#mod.coef_,
          "mod" : mod,
          "y_train_pred" : y_tr_pred,
          "y_val_pred" : y_val_pred,

@@ -20,7 +20,7 @@ from sklearn.linear_model import Ridge
 import json
 warnings.simplefilter('ignore')
 
-def lambda_seq(self,x,y,seq_len = 100,lambda_min_ratio = 0.0001):
+def lambda_seq(x,y,seq_len = 100,lambda_min_ratio = 0.0001):
     def mysd(y):
         return np.sqrt(np.sum((y - np.mean(y)) ** 2) / len(y))
     
@@ -59,15 +59,15 @@ def model_decomp(
 
     ## Decomp x
     xDecomp = pd.DataFrame()
-    for each_col in mod_output["coef_df"].columns:
-        xDecomp[each_col] = x[each_col] * mod_output["coef_df"][each_col][0]
+    for each_col in mod_output["coefs"].columns:
+        xDecomp[each_col] = x[each_col] * mod_output["coefs"][each_col][0]
     # xDecomp = pd.DataFrame({f"regressor_{i}": regressor * coeff for i, (regressor, coeff) in enumerate(zip(x, mod_output["coefs"][1:]), start=1)})
     xDecomp = pd.concat([pd.DataFrame({"intercept": [intercept] * xDecomp.shape[0]}), xDecomp], axis=1)
     xDecompOut = pd.concat([InputCollect["dt_modRollWind"]["ds"].reset_index(drop=True), pd.DataFrame({"y":y}), pd.DataFrame({"y_pred":mod_output["y_pred"]}), xDecomp], axis=1)
 
     ## Decomp immediate & carryover response
-    sel_coef = [col for col in mod_output["coef_df"].columns if col in dt_saturatedImmediate.columns]
-    coefs_media = mod_output["coef_df"][sel_coef]
+    sel_coef = [col for col in mod_output["coefs"].columns if col in dt_saturatedImmediate.columns]
+    coefs_media = mod_output["coefs"][sel_coef]
     mediaDecompImmediate = pd.DataFrame()
     mediaDecompCarryover = pd.DataFrame()
     for each_col in sel_coef:
@@ -119,7 +119,7 @@ def model_decomp(
     xDecompOutAggMeanNon0PercRF_list = xDecompOutAggMeanNon0RF["xDecompMeanNon0RF"] / sum(xDecompOutAggMeanNon0RF["xDecompMeanNon0RF"])
     xDecompOutAggMeanNon0PercRF = pd.DataFrame({"rn":xDecompOutAggMeanNon0RF["rn"],"xDecompMeanNon0PercRF":xDecompOutAggMeanNon0PercRF_list})
 
-    coefsOutCat = coefsOut = pd.DataFrame({"rn": mod_output["coef_df"].columns, "coefs": mod_output["coef_df"].values.flatten()})
+    coefsOutCat = coefsOut = pd.DataFrame({"rn": mod_output["coefs"].columns, "coefs": mod_output["coefs"].values.flatten()})
     if len(x_factor) > 0:
         for factor in x_factor:
             coefsOut["rn"] = coefsOut["rn"].str.replace(f"{factor}.*", factor)
@@ -182,7 +182,7 @@ def lingammm_iterations(
 
     #####################################
     #### Split train & test and prepare data for modelling
-
+    print("Split train & test and prepare data for modelling")
     dt_window = dt_modSaturated.copy()
 
     ## Contrast matrix because glmnet does not treat categorical variables (one hot encoding)
@@ -192,6 +192,7 @@ def lingammm_iterations(
     x_train = x_val = x_test = x_window
 
     ## Split train, test, and validation sets
+    print("Split train, test, and validation sets")
     train_size = hypParamSam["train_size"].iloc[-1]#[0]
     val_size = test_size = (1 - train_size) / 2
     if train_size < 1:
@@ -207,6 +208,7 @@ def lingammm_iterations(
         y_val = y_test = x_val = x_test = None
         
     ## Define and set sign control
+    print("Define and set sign control")
     dt_sign = dt_window.drop("dep_var",axis=1)
     
     if not isinstance(InputCollect["prophet_signs"],list): prophet_signs = [InputCollect["prophet_signs"]]
@@ -262,6 +264,7 @@ def lingammm_iterations(
 
     #####################################
     #### Fit ridge regression with nevergrad's lambda
+    print("Fit ridge regression with nevergrad's lambda")
     lambda_hp = hypParamSam['lambda'] #self.hypParamSamNG['lambda']#[i]
 
     if hyper_fixed == False: lambda_scaled = lambda_min + (lambda_max - lambda_min) * lambda_hp
@@ -275,9 +278,9 @@ def lingammm_iterations(
     ## NRMSE: Model's fit error
     if InputCollect["prior_knowledge"] is not None:
         mod_output = lm.causal_prediction(x_train, y_train,x_val, y_val,x_test, y_test,
-                                          lambda_scaled = lambda_scaled,prior_knowledge = InputCollect["prior_knowledge"])
+                                          lambda_scaled = lambda_scaled.values[0],prior_knowledge = InputCollect["prior_knowledge"])
     else:
-        mod_output = lm.causal_prediction(x_train, y_train,x_val, y_val,x_test, y_test,lambda_scaled = lambda_scaled)
+        mod_output = lm.causal_prediction(x_train, y_train,x_val, y_val,x_test, y_test,lambda_scaled = lambda_scaled.values[0])
 
     decomp_collect = model_decomp(
         InputCollect,
@@ -409,22 +412,20 @@ def lingammm(InputCollect,hyper_collect,iterations,nevergrad_algo,intercept_sign
                 ,refresh = False,trial = 1,seed = 123,quiet = False):
     ################################################
     #### Collect hyperparameters
-    print("Collect hyperparameters")
     if True:
         hypParamSamName = hyper_collect["hyper_list_all"]
         # Optimization hyper-parameters
-        hyper_bound_list_updated = hyper_collect["hyper_list_all"]
-        hyper_bound_list_updated_name = hyper_collect["hyper_bound_list_updated"]
+        hyper_bound_list_updated = hyper_collect["hyper_bound_list_updated"]
+        hyper_bound_list_updated_name = [s for s in hyper_collect["hyper_bound_list_updated"].keys()]
         hyper_count = len(hyper_bound_list_updated_name)
         # Fixed hyper-parameters
-        hyper_bound_list_fixed = hyper_collect["hyper_list_all"] #hyper_collect["hyper_bound_list_fixed"]
-        hyper_bound_list_fixed_name = hyper_collect["hyper_bound_list_fixed"] #hyper_bound_list_fixed
+        hyper_bound_list_fixed = hyper_collect["hyper_bound_list_fixed"]
+        hyper_bound_list_fixed_name = [s for s in hyper_collect["hyper_bound_list_fixed"].keys()] #hyper_bound_list_fixed
         hyper_count_fixed = len(hyper_bound_list_fixed_name)
         dt_hyper_fixed_mod = hyper_collect["dt_hyper_fixed_mod"].reset_index(drop=True)
-        hyper_fixed = hyper_collect["all_fixed"]
+        hyper_fixed = hyper_collect["all_fixed"]["hyper_fixed"]
     
     ## Get environment for parallel backend
-    print("Get environment for parallel backend")
     if True:
         i = None
         rssd_zero_penalty = rssd_zero_penalty
@@ -446,9 +447,9 @@ def lingammm(InputCollect,hyper_collect,iterations,nevergrad_algo,intercept_sign
         "mean_spend": temp.mean(axis=0)
         })
     dt_spendShare["spend_share"] = dt_spendShare["total_spend"] / dt_spendShare["total_spend"].sum()
-    refreshAddedStartWhich = InputCollect["dt_modRollWind"].index[InputCollect["dt_modRollWind"]["ds"]==InputCollect["refreshAddedStart"]].tolist()[0]
+    refreshAddedStartWhich = pd.DataFrame.from_dict(InputCollect["dt_modRollWind"]).index[pd.DataFrame.from_dict(InputCollect["dt_modRollWind"])["ds"]==InputCollect["refreshAddedStart"][0]].tolist()[0]
     
-    temp = dt_inputTrain[InputCollect["paid_media_spends"]].loc[refreshAddedStartWhich:refreshAddedStartWhich+InputCollect["rollingWindowLength"]]
+    temp = dt_inputTrain[InputCollect["paid_media_spends"]].loc[refreshAddedStartWhich:refreshAddedStartWhich+InputCollect["rollingWindowLength"][0]]
 
     dt_spendShareRF = pd.DataFrame({
         "rn": InputCollect["paid_media_spends"],
@@ -462,8 +463,8 @@ def lingammm(InputCollect,hyper_collect,iterations,nevergrad_algo,intercept_sign
     ################################################
     #### Get lambda
     lambda_min_ratio = 0.0001 # default  value from glmnet
-    lambdas = lambda_seq(x = InputCollect["dt_mod"].drop(["ds","dep_var"],axis=1),
-                         y = InputCollect["dt_mod"]["dep_var"],seq_len = 100,
+    lambdas = lambda_seq(x = pd.DataFrame.from_dict(InputCollect["dt_mod"]).drop(["ds","dep_var"],axis=1),
+                         y = pd.DataFrame.from_dict(InputCollect["dt_mod"])["dep_var"],seq_len = 100,
                          lambda_min_ratio = lambda_min_ratio)
 
     lambda_max = max(lambdas) * 0.1
@@ -517,7 +518,7 @@ def lingammm(InputCollect,hyper_collect,iterations,nevergrad_algo,intercept_sign
                 hyppar_value = round(nevergrad_hp_val[lng][index], 6)
                 if len(channelBound) > 1: hypParamSamNG[hypNameLoop] = uniform.ppf(hyppar_value, min(channelBound), max(channelBound))
                 else: hypParamSamNG[hypNameLoop] = hyppar_value
-            
+                        
             each_hypParamSamList = pd.DataFrame(data=hypParamSamNG.values(),index=hypParamSamNG.keys()).T
             # each_hypParamSamList["iter"] = co 
             each_hypParamSamList["iter"] = lng 
@@ -526,17 +527,22 @@ def lingammm(InputCollect,hyper_collect,iterations,nevergrad_algo,intercept_sign
             hypParamSamNG = hypParamSamList.copy().reset_index(drop=True)
 
             ## Add fixed hyperparameters
+            hypParamSamName_col = [s for s in hypParamSamName.keys()]
             if hyper_count_fixed != 0:
-                hypParamSamName_col = [s for s in hypParamSamName.keys()]
                 hypParamSamNG = pd.concat([hypParamSamNG,dt_hyper_fixed_mod],axis=1)
-                hypParamSamNG = hypParamSamNG.loc[:, hypParamSamName_col]
-            else:
-                hypParamSamNG = dt_hyper_fixed_mod[hypParamSamName_col]
+                hypParamSamNG = hypParamSamNG[hypParamSamName_col]
+        else:
+            hypParamSamNG = dt_hyper_fixed_mod[hypParamSamName_col]
 
         ########### start
         # if calibration_input is not None: lift_cal_collect = {}
-
-        doparCollect = lingammm_iterations(lng,hypParamSamNG,lambda_min,lambda_max,lambda_min_ratio,trial,add_penalty_factor,causal_mod,ts_validation)
+        doparCollect = lingammm_iterations(
+            InputCollect=InputCollect, i=lng, hypParamSam=hypParamSamNG,
+            hyper_fixed=hyper_fixed, lambda_min=lambda_min, lambda_max=lambda_max,
+            lambda_min_ratio=lambda_min_ratio, trial=trial, add_penalty_factor=add_penalty_factor,
+            ts_validation=ts_validation, dt_spendShare=dt_spendShare, refresh=refresh,
+            refresh_steps=refresh_steps, rssd_zero_penalty=rssd_zero_penalty,t0=t0)
+        
         # nrmse_collect.append(doparCollect["resultHypParam"]["nrmse"])
         # decomp_rssd_collect.append(doparCollect["resultHypParam"]["decomp.rssd"])
         # mape_lift_collect.append(doparCollect["resultHypParam"]["mape"])
