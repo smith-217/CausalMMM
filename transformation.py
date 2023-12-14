@@ -165,8 +165,8 @@ def run_transformations(InputCollect,hypParamSam):
         ################################################
         ## 2. Saturation (only window data)
         print("## 2. Saturation (only window data)")
-        m_adstockedRollWind = m_adstocked.loc[rollingWindowStartWhich:rollingWindowEndWhich]
-        m_carryoverRollWind = m_carryover.loc[rollingWindowStartWhich:rollingWindowEndWhich]
+        m_adstockedRollWind = m_adstocked.loc[rollingWindowStartWhich:rollingWindowEndWhich+1]
+        m_carryoverRollWind = m_carryover.loc[rollingWindowStartWhich:rollingWindowEndWhich+1]
 
         alpha = hypParamSam[f"{all_media[v]}_alphas"].values[0]#[0]
         gamma = hypParamSam[f"{all_media[v]}_gammas"].values[0]#[0]
@@ -196,7 +196,7 @@ def run_transformations(InputCollect,hypParamSam):
     dt_modAdstocked.drop(columns=all_media, inplace=True)
     dt_modAdstocked = pd.concat([dt_modAdstocked, mediaAdstocked], axis=1)
 
-    dt_modSaturated = dt_modAdstocked.iloc[rollingWindowStartWhich:rollingWindowEndWhich] \
+    dt_modSaturated = dt_modAdstocked.iloc[rollingWindowStartWhich:rollingWindowEndWhich+1] \
                 .drop(all_media, axis=1) \
                 .join(mediaSaturated)
 

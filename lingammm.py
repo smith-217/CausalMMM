@@ -51,21 +51,25 @@ def model_decomp(
         mod_output
 ):
     ## Input for decomp
-    y = dt_modSaturated["dep_var"]
-    x = dt_modSaturated.drop("dep_var",axis=1)
+    y = dt_modSaturated[["dep_var"]].reset_index(drop=True)
+    y.rename(columns={"dep_var":"y"},inplace=True)
+    x = dt_modSaturated.drop("dep_var",axis=1).reset_index(drop=True)
     intercept = mod_output["df_int"]
     x_name = [s for s in x.columns]
     x_factor = [name for name in x_name if isinstance(name, str)]
 
     ## Decomp x
+    print("## Decomp x")
     xDecomp = pd.DataFrame()
     for each_col in mod_output["coefs"].columns:
         xDecomp[each_col] = x[each_col] * mod_output["coefs"][each_col][0]
     # xDecomp = pd.DataFrame({f"regressor_{i}": regressor * coeff for i, (regressor, coeff) in enumerate(zip(x, mod_output["coefs"][1:]), start=1)})
     xDecomp = pd.concat([pd.DataFrame({"intercept": [intercept] * xDecomp.shape[0]}), xDecomp], axis=1)
-    xDecompOut = pd.concat([InputCollect["dt_modRollWind"]["ds"].reset_index(drop=True), pd.DataFrame({"y":y}), pd.DataFrame({"y_pred":mod_output["y_pred"]}), xDecomp], axis=1)
+    ds_df = pd.DataFrame(InputCollect["dt_modRollWind"])[["ds"]].reset_index(drop=True)
+    xDecompOut = pd.concat([ds_df, y, mod_output["y_pred"], xDecomp], axis=1)
 
     ## Decomp immediate & carryover response
+    print("## Decomp immediate & carryover response")
     sel_coef = [col for col in mod_output["coefs"].columns if col in dt_saturatedImmediate.columns]
     coefs_media = mod_output["coefs"][sel_coef]
     mediaDecompImmediate = pd.DataFrame()
@@ -78,6 +82,7 @@ def model_decomp(
                                             ,pd.DataFrame({each_col:dt_saturatedCarryover[each_col].reset_index(drop=True) * coefs_media[each_col].values[0]})
                                             ],axis=1)
     ## Output decomp
+    print("## Output decomp")
     y_hat = xDecomp.sum(axis=1,skipna=True)
     y_hat_scaled = xDecomp.abs().sum(axis=1) #np.nansum(np.abs(xDecomp), axis=1)
     xDecompOutPerc_scaled = xDecomp.abs() / y_hat_scaled
@@ -183,7 +188,7 @@ def lingammm_iterations(
     #####################################
     #### Split train & test and prepare data for modelling
     print("Split train & test and prepare data for modelling")
-    dt_window = dt_modSaturated.copy()
+    dt_window = dt_modSaturated.copy().reset_index(drop=True)
 
     ## Contrast matrix because glmnet does not treat categorical variables (one hot encoding)
     y_window = dt_window["dep_var"]
@@ -192,23 +197,22 @@ def lingammm_iterations(
     x_train = x_val = x_test = x_window
 
     ## Split train, test, and validation sets
-    print("Split train, test, and validation sets")
     train_size = hypParamSam["train_size"].iloc[-1]#[0]
     val_size = test_size = (1 - train_size) / 2
     if train_size < 1:
         train_size_index = int(np.floor(np.quantile(np.arange(dt_window.shape[0]), train_size)))
         val_size_index = train_size_index + round(val_size * dt_window.shape[0])
-        y_train = y_window.iloc[1:train_size_index]
-        y_val = y_window.iloc[(train_size_index + 1):val_size_index]
-        y_test = y_window.iloc[(val_size_index + 1):y_window.shape[0]]
-        x_train = x_window.iloc[1:train_size_index, ]
-        x_val = x_window.iloc[(train_size_index + 1):val_size_index, ]
-        x_test = x_window.iloc[(val_size_index + 1):y_window.shape[0], ]
+        y_train = y_window.iloc[:train_size_index]
+        y_val = y_window.iloc[train_size_index:val_size_index]
+        y_test = y_window.iloc[val_size_index:y_window.shape[0]]
+        x_train = x_window.iloc[:train_size_index]
+        x_val = x_window.iloc[train_size_index:val_size_index]
+        x_test = x_window.iloc[val_size_index:y_window.shape[0]]
     else:
         y_val = y_test = x_val = x_test = None
+    
         
     ## Define and set sign control
-    print("Define and set sign control")
     dt_sign = dt_window.drop("dep_var",axis=1)
     
     if not isinstance(InputCollect["prophet_signs"],list): prophet_signs = [InputCollect["prophet_signs"]]
@@ -277,10 +281,10 @@ def lingammm_iterations(
     #####################################
     ## NRMSE: Model's fit error
     if InputCollect["prior_knowledge"] is not None:
-        mod_output = lm.causal_prediction(x_train, y_train,x_val, y_val,x_test, y_test,
+        mod_output = lm.causal_prediction(x_train, y_train, x_val, y_val,x_test, y_test,
                                           lambda_scaled = lambda_scaled.values[0],prior_knowledge = InputCollect["prior_knowledge"])
     else:
-        mod_output = lm.causal_prediction(x_train, y_train,x_val, y_val,x_test, y_test,lambda_scaled = lambda_scaled.values[0])
+        mod_output = lm.causal_prediction(x_train, y_train, x_val, y_val,x_test, y_test,lambda_scaled = lambda_scaled.values[0])
 
     decomp_collect = model_decomp(
         InputCollect,

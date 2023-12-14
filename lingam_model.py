@@ -16,15 +16,14 @@ def lingam_model(
         return lingam.DirectLiNGAM().fit(input_df)
 
 def causal_transform(
-        X,
-        y,
+        input_df,
         lg_model
 ):
     ce = lingam.CausalEffect(lg_model)
-    input_df = pd.concat([y,X],axis=1)
     mat_ = check_array(input_df)
     ce._check_init_params()
-    print("_causal_order: ", ce._causal_order)
+
+    column_list = [input_df.columns[s] for s in ce._causal_order]
 
     # all_effected_dict = {}
     all_effected_list = []
@@ -36,7 +35,9 @@ def causal_transform(
       for i in ce._causal_order:
         effects[i] = np.dot(ce._B[i, :], effects) + En[i]
       all_effected_list.append([s for s in effects])
-    return pd.DataFrame(all_effected_list).iloc[:,0], pd.DataFrame(all_effected_list).iloc[:,1:]
+    output_df = pd.DataFrame(all_effected_list)
+    output_df.columns = column_list
+    return output_df #.iloc[:,0], output_df.iloc[:,1:]
 
 def get_rsq_py(
         true, 
@@ -69,58 +70,70 @@ def causal_prediction(x_train,y_train,x_val,y_val,x_test,y_test,lambda_scaled,pr
 
       lg_model = lingam_model(all_df,prior_knowledge)
     
-      y_tr_trans, x_tr_trans = causal_transform(x_train, y_train, lg_model)
-      y_val_trans, x_val_trans = causal_transform(x_val, y_val, lg_model)
-      y_test_trans, x_test_trans = causal_transform(x_test, y_test, lg_model)
+      all_tr_trans = causal_transform(all_df, lg_model)
+
+      x_tr_trans = all_tr_trans.iloc[x_train.index].drop("dep_var",axis=1)
+      y_tr_trans = all_tr_trans.iloc[y_train.index][["dep_var"]]
+
+      # if (x_val is not None) and (y_val is not None):
+      x_val_trans = all_tr_trans.iloc[x_val.index].drop("dep_var",axis=1)
+      y_val_trans = all_tr_trans.iloc[y_val.index][["dep_var"]]
+
+      # if (x_test is not None) and (y_test is not None):
+      x_test_trans = all_tr_trans.iloc[x_test.index].drop("dep_var",axis=1)
+      y_test_trans = all_tr_trans.iloc[y_test.index][["dep_var"]]
       
       mod = Ridge(random_state=0,alpha=lambda_scaled)
       mod.fit(x_tr_trans,y_tr_trans)
       
       y_tr_pred = mod.predict(x_tr_trans)
-      df_int = mod.intercept_
+      df_int = mod.intercept_[0]
+
       # 
       rsq_train = get_rsq_py(
-        true = y_tr_trans
-        ,predicted = y_tr_pred
+        true = y_tr_trans["dep_var"]
+        ,predicted = pd.DataFrame(y_tr_pred).astype("int")
         ,p = x_tr_trans.shape[1]
         ,df_int = df_int
         )
     
-      if x_val_trans is not None:
-        y_val_pred = mod.predict(x_val_trans)
-        # 
-        rsq_val = get_rsq_py(
-          true = y_val_trans
-          ,predicted = y_val_pred
-          ,p = x_val_trans.shape[1]
-          ,df_int = df_int
-          ,n_train = len(y_tr_trans)
-          )
-        
-        y_test_pred = mod.predict(x_test_trans)
-        # 
-        rsq_test = get_rsq_py(
-          true = y_test_trans
-          ,predicted = y_test_pred
-          ,p = x_test_trans.shape[1]
-          ,df_int = df_int
-          ,n_train = len(y_tr_trans)
-          )
+      # if x_val_trans is not None:
+      y_val_pred = mod.predict(x_val_trans)
+      # 
+      rsq_val = get_rsq_py(
+        true = y_val_trans["dep_var"]
+        ,predicted = pd.DataFrame(y_val_pred).astype("int")
+        ,p = x_val_trans.shape[1]
+        ,df_int = df_int
+        ,n_train = len(y_tr_trans)
+        )
+
+      # if x_test_trans is not None: 
+      y_test_pred = mod.predict(x_test_trans)
+      # 
+      rsq_test = get_rsq_py(
+        true = y_test_trans["dep_var"]
+        ,predicted = pd.DataFrame(y_test_pred).astype("int")
+        ,p = x_test_trans.shape[1]
+        ,df_int = df_int
+        ,n_train = len(y_tr_trans)
+        )
           
-        y_pred = pd.concat([pd.DataFrame(y_tr_pred), pd.DataFrame(y_val_pred), pd.DataFrame(y_test_pred)])
-      else:
-        rsq_val = rsq_test = np.nan
-        y_pred = y_tr_pred
+      y_pred = pd.concat([pd.DataFrame(y_tr_pred), pd.DataFrame(y_val_pred), pd.DataFrame(y_test_pred)]).reset_index(drop=True)
+      y_pred.rename(columns={0:"y_pred"},inplace=True)
+      
+      # else:
+      #   rsq_val = rsq_test = np.nan
+      #   y_pred = y_tr_pred
     
       # Calculate all NRMSE
-      nrmse_train = np.sqrt(np.mean((y_tr_trans - y_tr_pred)**2)) / (max(y_tr_trans) - min(y_tr_trans))
+      nrmse_train = np.sqrt(np.mean((y_tr_trans["dep_var"] - pd.DataFrame(y_tr_pred)[0])**2)) / (max(y_tr_trans["dep_var"]) - min(y_tr_trans["dep_var"]))
       if x_val_trans is not None:
-        nrmse_val = np.sqrt(np.mean(sum((y_val_trans - y_val_pred)**2))) / (max(y_val_trans) - min(y_val_trans))
-        nrmse_test = np.sqrt(np.mean(sum((y_test_trans - y_test_pred)**2))) / (max(y_test_trans) - min(y_test_trans))
+        nrmse_val = np.sqrt(np.mean(sum((y_val_trans["dep_var"] - pd.DataFrame(y_val_pred)[0])**2))) / (max(y_val_trans["dep_var"]) - min(y_val_trans["dep_var"]))
+        nrmse_test = np.sqrt(np.mean(sum((y_test_trans["dep_var"] - pd.DataFrame(y_test_pred)[0])**2))) / (max(y_test_trans["dep_var"]) - min(y_test_trans["dep_var"]))
       else:
         nrmse_val = nrmse_test = y_val_pred = y_test_pred = np.nan
       
-      print("coef_: ",mod.coef_)
       coef_df = pd.DataFrame(mod.coef_)
       coef_df.columns = x_train.columns
       
